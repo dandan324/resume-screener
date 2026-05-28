@@ -2,133 +2,136 @@ import streamlit as st
 import re
 from datetime import datetime
 
-st.set_page_config(page_title="🧠 脑子进水简历筛选", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="Resume Screener", page_icon="🧠", layout="wide")
 
 class ResumeScoringEngine:
     def __init__(self):
-        self.brand_kw = ["名创优品","miniso","KKV","kkv","番茄口袋","三福","NOME","nome","The Green Party","绿光派对","酷乐潮玩","九木杂物社","杂物社"]
+        self.brand_kw = ["名创优品","miniso","MINISO","KKV","kkv","番茄口袋","三福","NOME","nome","The Green Party","绿光派对","酷乐潮玩","九木杂物社","杂物社","伶俐","Lenle","熙美诚品","木槿生活","生活无忧"]
         self.art_kw = ["书法","绘画","手绘","POP","pop","海报","设计","PS","ps","平面设计","美术","素描","国画","油画","插画"]
         self.hand_kw = ["编织","手工","黏土","陶艺","DIY","diy","手作","钩针","刺绣","剪纸"]
         self.media_kw = ["自媒体","微博","微信","小红书","抖音","公众号","运营","文案","策划","推广","社群"]
         self.wrong_jobs = ["快递员","外卖","骑手","司机","保安","保洁","保姆","月嫂"]
-    
+
     def extract_age(self, text):
-        for p in [r'(\d{2})岁', r'年龄[：:]\s*(\d{2})', r'(\d{2})周岁']:
+        for p in [r'(\d{2})岁', r'年龄[:：]\s*(\d{2})', r'(\d{2})周岁']:
             m = re.search(p, text)
             if m:
                 a = int(m.group(1))
                 if 16 <= a <= 60: return a
         return None
-    
+
     def extract_edu(self, text):
         for edu, lv in {'博士':5,'硕士':4,'研究生':4,'本科':3,'大专':2,'大学':2,'高中':1,'中专':1,'中技':1}.items():
             if edu in text: return edu, lv
         return "未知", -1
-    
+
     def extract_work(self, text):
         exps = []
         for p in [r'(\d{4})[.\-/年](\d{1,2})\s*[-~至]\s*(\d{4})[.\-/年](\d{1,2})', r'(\d{4})[.\-/年](\d{1,2})\s*[-~至]\s*至今']:
             for m in re.finditer(p, text):
                 try:
                     sy, sm = int(m.group(1)), int(m.group(2))
-                    ey, em = (datetime.now().year, datetime.now().month) if '至今' in m.group(0) or len(m.groups())<<4 else (int(m.group(3)), int(m.group(4)))
-                    dm = (ey-sy)*12 + (em-sm)
+                    if '至今' in m.group(0) or len(m.groups()) < 4:
+                        ey, em = datetime.now().year, datetime.now().month
+                    else:
+                        ey, em = int(m.group(3)), int(m.group(4))
+                    dm = (ey - sy) * 12 + (em - sm)
                     if 0 < dm <= 240: exps.append({'dm': dm})
                 except: continue
         return exps
-    
+
     def score(self, text, name="未知"):
         age = self.extract_age(text)
         edu, el = self.extract_edu(text)
         we = self.extract_work(text)
-        
-        # 岗位匹配度
+
+        # Job Match
         jm, jmr = 50, []
         jobs = [k for k in ['店员','营业员','导购','收银','理货','销售'] if k in text]
         jm += 15 if jobs else -10
-        jmr.append(f"{'✅' if jobs else '❌'} 期望职位: {', '.join(jobs) if jobs else '未匹配'} ({'+15' if jobs else '-10'})")
-        
+        jmr.append(f"期望职位: {', '.join(jobs) if jobs else '未匹配'} ({'+15' if jobs else '-10'})")
+
         sks = {'收银':['收银','收款','结账','POS','收银机'],'理货':['理货','上货','补货','陈列','盘点'],'推销':['推销','销售','推荐','成交','客单价'],'服务':['接待','服务','咨询','顾客','客情']}
         cov = sum(1 for _,kw in sks.items() if any(k in text for k in kw))
         jm += min(cov*5, 20)
-        jmr.append(f"{'✅' if cov>=3 else '⚠️'} 技能覆盖: {cov}/4项 (+{min(cov*5,20)})")
-        
-        if '大理' in text: jm += 5; jmr.append("✅ 城市匹配: 大理 (+5)")
-        
+        jmr.append(f"技能覆盖: {cov}/4项 (+{min(cov*5,20)})")
+
+        if '大理' in text: jm += 5; jmr.append("城市匹配: 大理 (+5)")
+
         sm = re.search(r'(\d+)\s*[-~]\s*(\d+)\s*[Kk千]', text)
         if sm:
             ms = int(sm.group(1))*1000
-            if ms >= 4000: jm += 5; jmr.append(f"✅ 薪资合理: {ms/1000:.0f}K (+5)")
-            elif ms < 3000: jm -= 5; jmr.append(f"⚠️ 薪资偏低: {ms/1000:.0f}K (-5)")
-        
+            if ms >= 4000: jm += 5; jmr.append(f"薪资合理: {ms/1000:.0f}K (+5)")
+            elif ms < 3000: jm -= 5; jmr.append(f"薪资偏低: {ms/1000:.0f}K (-5)")
+
         bk = [b for b in self.brand_kw if b.lower() in text.lower()]
-        if bk: jm += 10; jmr.append(f"🏪 品牌加分: {', '.join(set(bk))} (+10)")
-        if any(k in text for k in ['收银','收款','POS']): jm += 5; jmr.append("💰 收银经验 (+5)")
+        if bk: jm += 10; jmr.append(f"品牌加分: {', '.join(set(bk))} (+10)")
+        if any(k in text for k in ['收银','收款','POS']): jm += 5; jmr.append("收银经验 (+5)")
         ak = [k for k in self.art_kw if k in text]
-        if ak: jm += 10; jmr.append(f"🎨 艺术特长: {', '.join(set(ak))} (+10)")
+        if ak: jm += 10; jmr.append(f"艺术特长: {', '.join(set(ak))} (+10)")
         hk = [k for k in self.hand_kw if k in text]
-        if hk: jm += 8; jmr.append(f"✂️ 手工特长: {', '.join(set(hk))} (+8)")
+        if hk: jm += 8; jmr.append(f"手工特长: {', '.join(set(hk))} (+8)")
         mk = [k for k in self.media_kw if k in text]
-        if mk: jm += 8; jmr.append(f"📱 运营能力: {', '.join(set(mk))} (+8)")
+        if mk: jm += 8; jmr.append(f"运营能力: {', '.join(set(mk))} (+8)")
         jm = min(max(jm, 0), 100)
-        
-        # 经验深度
+
+        # Experience
         ex, exr = 30, []
         tm = sum(e['dm'] for e in we)
-        if tm >= 36: ex += 20; exr.append(f"✅ 经验{tm}个月 (+20)")
-        elif tm >= 24: ex += 15; exr.append(f"✅ 经验{tm}个月 (+15)")
-        elif tm >= 12: ex += 10; exr.append(f"✅ 经验{tm}个月 (+10)")
-        elif tm >= 6: ex += 5; exr.append(f"⚠️ 经验{tm}个月 (+5)")
-        else: exr.append(f"❌ 经验仅{tm}个月")
-        
-        if bk: ex += 15; exr.append("🏪 品牌背书 (+15)")
-        if re.search(r'\d+[%％元个万人]', text): ex += 10; exr.append("✅ 量化成果 (+10)")
-        else: exr.append("⚠️ 无量化数据")
-        if any(p in text for p in ['店长','主管','领班','资深','储备']): ex += 10; exr.append("✅ 晋升经历 (+10)")
-        if '实习' in text and tm < 12: ex -= 5; exr.append("⚠️ 实习经验 (-5)")
+        if tm >= 36: ex += 20; exr.append(f"经验{tm}个月 (+20)")
+        elif tm >= 24: ex += 15; exr.append(f"经验{tm}个月 (+15)")
+        elif tm >= 12: ex += 10; exr.append(f"经验{tm}个月 (+10)")
+        elif tm >= 6: ex += 5; exr.append(f"经验{tm}个月 (+5)")
+        else: exr.append(f"经验仅{tm}个月")
+
+        if bk: ex += 15; exr.append("品牌背书 (+15)")
+        if re.search(r'\d+[%％元个万人]', text): ex += 10; exr.append("量化成果 (+10)")
+        else: exr.append("无量化数据")
+        if any(p in text for p in ['店长','主管','领班','资深','储备']): ex += 10; exr.append("晋升经历 (+10)")
+        if '实习' in text and tm < 12: ex -= 5; exr.append("实习经验 (-5)")
         ex = min(max(ex, 0), 100)
-        
-        # 稳定性
+
+        # Stability
         st, strs = 50, []
-        if not we: st -= 20; strs.append("❌ 无工作经历 (-20)")
+        if not we: st -= 20; strs.append("无工作经历 (-20)")
         else:
             avg = sum(e['dm'] for e in we)/len(we)
-            if avg >= 24: st += 25; strs.append(f"✅ 平均{avg:.0f}个月 (+25)")
-            elif avg >= 12: st += 20; strs.append(f"✅ 平均{avg:.0f}个月 (+20)")
-            elif avg >= 6: st += 10; strs.append(f"⚠️ 平均{avg:.0f}个月 (+10)")
-            else: st -= 15; strs.append(f"❌ 平均仅{avg:.0f}个月 (-15)")
-            
+            if avg >= 24: st += 25; strs.append(f"平均{avg:.0f}个月 (+25)")
+            elif avg >= 12: st += 20; strs.append(f"平均{avg:.0f}个月 (+20)")
+            elif avg >= 6: st += 10; strs.append(f"平均{avg:.0f}个月 (+10)")
+            else: st -= 15; strs.append(f"平均仅{avg:.0f}个月 (-15)")
+
             mx = max(e['dm'] for e in we)
-            if mx >= 24: st += 10; strs.append(f"✅ 最长{mx}个月 (+10)")
-            
-            if any(k in text for k in ['待业','休息','备考','空档','gap']): st -= 5; strs.append("⚠️ 有空档期 (-5)")
-            if any(k in text for k in ['不请假','不旷工','不迟到','稳定性','长期']): st += 5; strs.append("✅ 自述稳定 (+5)")
+            if mx >= 24: st += 10; strs.append(f"最长{mx}个月 (+10)")
+
+            if any(k in text for k in ['待业','休息','备考','空档','gap']): st -= 5; strs.append("有空档期 (-5)")
+            if any(k in text for k in ['不请假','不旷工','不迟到','稳定性','长期']): st += 5; strs.append("自述稳定 (+5)")
         st = min(max(st, 0), 100)
-        
-        # 成长潜力
+
+        # Potential
         po, por = 40, []
         if age:
-            if 22 <= age <= 28: po += 20; por.append(f"✅ 黄金年龄{age}岁 (+20)")
-            elif 18 <= age <= 21: po += 15; por.append(f"✅ 年龄{age}岁 (+15)")
-            elif 29 <= age <= 32: po += 10; por.append(f"⚠️ 年龄{age}岁 (+10)")
-            elif age >= 33: po += 5; por.append(f"⚠️ 年龄{age}岁 (+5)")
-        else: por.append("❓ 年龄未识别")
-        
-        if el >= 3: po += 15; por.append(f"✅ {edu}学历 (+15)")
-        elif el >= 2: po += 10; por.append(f"✅ {edu}学历 (+10)")
-        elif el >= 1: po += 5; por.append(f"✅ {edu}学历 (+5)")
-        else: por.append("❓ 学历未识别")
-        
+            if 22 <= age <= 28: po += 20; por.append(f"黄金年龄{age}岁 (+20)")
+            elif 18 <= age <= 21: po += 15; por.append(f"年龄{age}岁 (+15)")
+            elif 29 <= age <= 32: po += 10; por.append(f"年龄{age}岁 (+10)")
+            elif age >= 33: po += 5; por.append(f"年龄{age}岁 (+5)")
+        else: por.append("年龄未识别")
+
+        if el >= 3: po += 15; por.append(f"{edu}学历 (+15)")
+        elif el >= 2: po += 10; por.append(f"{edu}学历 (+10)")
+        elif el >= 1: po += 5; por.append(f"{edu}学历 (+5)")
+        else: por.append("学历未识别")
+
         cs = ['运营','策划','文案','设计','自媒体','摄影','视频']
         cc = sum(1 for s in cs if s in text)
-        if cc >= 2: po += 15; por.append(f"✅ 复合能力{cc}项 (+15)")
-        elif cc >= 1: po += 8; por.append(f"⚠️ 复合能力{cc}项 (+8)")
-        
-        if any(k in text for k in ['学习','进步','提升','适应','快速上手','掌握']): po += 5; por.append("✅ 学习能力强 (+5)")
-        if '前' in text and ('%' in text or '名' in text): po += 5; por.append("✅ 学业优秀 (+5)")
+        if cc >= 2: po += 15; por.append(f"复合能力{cc}项 (+15)")
+        elif cc >= 1: po += 8; por.append(f"复合能力{cc}项 (+8)")
+
+        if any(k in text for k in ['学习','进步','提升','适应','快速上手','掌握']): po += 5; por.append("学习能力强 (+5)")
+        if '前' in text and ('%' in text or '名' in text): po += 5; por.append("学业优秀 (+5)")
         po = min(max(po, 0), 100)
-        
-        # 风险
+
+        # Risks
         risks = []
         wj = [j for j in self.wrong_jobs if j in text]
         if wj: risks.append({'lv':'high','cn':'🔴 高风险','desc':f"期望职位偏离: {', '.join(wj)}"})
@@ -137,43 +140,43 @@ class ResumeScoringEngine:
             if avg < 6 and len(we) >= 3: risks.append({'lv':'high','cn':'🔴 高风险','desc':f"频繁跳槽: 平均{avg:.0f}个月"})
         if sm and int(sm.group(1))*1000 < 4000: risks.append({'lv':'medium','cn':'🟡 中风险','desc':f"期望薪资偏低: {int(sm.group(1))}K"})
         if age and age >= 33: risks.append({'lv':'low','cn':'🟢 低风险','desc':f"年龄接近上限: {age}岁"})
-        if we and len(we)==1 and we[0]['dm']<<12: risks.append({'lv':'medium','cn':'🟡 中风险','desc':"经验单一且浅层"})
-        
-        # 面试问题
+        if we and len(we)==1 and we[0]['dm'] < 12: risks.append({'lv':'medium','cn':'🟡 中风险','desc':"经验单一且浅层"})
+
+        # Questions
         mq, bq = [], []
         if any(r['lv']=='high' and '偏离' in r['desc'] for r in risks):
             mq.append("您简历上期望职位与我们岗位不同，为什么会投递营业员？是否接受长期做零售一线？")
         else: mq.append("您为什么会选择投递我们文创门店营业员？未来1-3年职业规划是什么？")
-        
+
         if any(r['lv']=='high' and '跳槽' in r['desc'] for r in risks):
             mq.append("您过往工作经历更换较频繁，能否说明各段离职原因？如何确保这次能长期稳定？")
         else: mq.append("您过往工作经历中，离职原因分别是什么？如果录用，计划在本岗位工作多久？")
-        
+
         mq.extend([
             "请详细描述上一份工作中一天的具体工作流程？接待/理货/收银各占多少比例？",
             "我们门店周末/节假日客流大，需长时间站立和主动推销，您能接受吗？",
             "我们薪资4,800-6,000元，需排班制（含周末），您期望薪资是多少？"
         ])
-        
+
         if any(k in text for k in self.art_kw):
             bq.append("您有书法/绘画特长，能否现场简单展示？如果让您设计一张新品POP海报，思路是什么？")
         else: bq.append("门店需手写POP海报和主题陈列，您有书法/绘画/手工/设计特长吗？")
-        
+
         if any(k in text for k in self.media_kw):
             bq.append("您有运营/自媒体经验，如果让您负责门店小红书/抖音内容运营，您打算怎么做？")
         else: bq.append("如果门店需要您学习拍照、写文案发小红书，您愿意吗？")
-        
-        # 综合
+
+        # Final
         ts = jm*0.35 + ex*0.25 + st*0.2 + po*0.2
         grade = "超配" if ts>=90 else "优秀" if ts>=80 else "良好" if ts>=70 else "勉强" if ts>=60 else "不匹配"
         dec = "重点争取" if ts>=90 else "建议优先录用" if ts>=80 else "建议录用" if ts>=70 else "谨慎考虑" if ts>=60 else "建议淘汰"
-        
+
         hr = [r for r in risks if r['lv']=='high']
         if ts>=80 and not hr: hd, sb, pos = "建议优先录用", 5200 if ts>=90 else 5000, "资深营业员" if ts>=85 else "营业员"
         elif ts>=70 and not hr: hd, sb, pos = "建议录用", 4800, "营业员（培养期）"
         elif ts>=60: hd, sb, pos = "谨慎考虑", 4800, "普通营业员"
         else: hd, sb, pos = "建议淘汰", 0, "—"
-        
+
         return {
             'name': name, 'score': round(ts,1), 'grade': grade, 'decision': dec,
             'dims': {
@@ -198,36 +201,35 @@ with c1:
     st.subheader("📝 粘贴简历")
     name = st.text_input("候选人姓名（可选）", placeholder="如：张三")
     text = st.text_area("简历内容", height=400, placeholder="请直接粘贴简历全文...")
-    
+
     samples = {
-        "赵洴（示例-有风险）": """赵洴\n27岁\n高中\n7年\n离职-随时到岗\n前台,服务员,导购,便利店收银,普通话,\n我的经验：导购3年，会编织绳 ，超市收银半年\n期望职位\n大理白族自治州\n快递员\n行业不限\n3-4K\n工作经历\n名创优品百货店\n收银\n2020.04 - 2020.10\n超市收银\n水果店收银\n酒店收银\n教育经历\n大理市第二中学\n高中\n2015 - 2018""",
-        "无名氏（示例-良好）": """无名氏\n23岁\n中专/中技\n1年\n离职-随时到岗\n我目前拥有11个月的店员/营业员工作经验\n期望职位\n大理白族自治州\n店员/营业员\n行业不限\n3-4K\n工作经历\n旭兴超市\n店员/营业员\n2025.01 - 2025.12\n收银，理货，打扫卫生，向客人介绍产品\n在工作期间，我不随意请假、干活快，效率高、不无故缺勤。\n拥有技能：上货、会操作电脑、有一定推销能力。""",
-        "王玉鑫（示例-优秀）": """王玉鑫\n22岁\n大专\n24年毕业\n离校-随时到岗\n多年校园推广及活动策划工作经历\n最近关注\n大理白族自治州·大理市\n店员/营业员\n行业不限\n4-5K\n工作经历\n文山盛源商贸店\n店员/营业员\n实习\n2025.06 - 2025.10\n1. 负责到店顾客接待、产品讲解与介绍\n2. 完成日常货品陈列、整理、盘点工作\n3. 协助处理顾客售后问题\n4. 配合团队开展日常工作\n昆明健之佳公司\n运营助理/专员\n2024.04 - 2024.11\n负责撰写软文，协助运营执行推广活动\n业绩：所负责的微博热点活动参与数量单条超过1,000人\n教育经历\n云南经济管理学院\n电子商务\n大专\n2021 - 2024\n专业排名：专业前40%"""
+        "赵洴（示例-有风险）": "赵洴\n27岁\n高中\n7年\n离职-随时到岗\n前台,服务员,导购,便利店收银,普通话,\n我的经验：导购3年，会编织绳 ，超市收银半年\n期望职位\n大理白族自治州\n快递员\n行业不限\n3-4K\n工作经历\n名创优品百货店\n收银\n2020.04 - 2020.10\n超市收银\n水果店收银\n酒店收银\n教育经历\n大理市第二中学\n高中\n2015 - 2018",
+        "无名氏（示例-良好）": "无名氏\n23岁\n中专/中技\n1年\n离职-随时到岗\n我目前拥有11个月的店员/营业员工作经验\n期望职位\n大理白族自治州\n店员/营业员\n行业不限\n3-4K\n工作经历\n旭兴超市\n店员/营业员\n2025.01 - 2025.12\n收银，理货，打扫卫生，向客人介绍产品\n在工作期间，我不随意请假、干活快，效率高、不无故缺勤。\n拥有技能：上货、会操作电脑、有一定推销能力。",
+        "王玉鑫（示例-优秀）": "王玉鑫\n22岁\n大专\n24年毕业\n离校-随时到岗\n多年校园推广及活动策划工作经历\n最近关注\n大理白族自治州·大理市\n店员/营业员\n行业不限\n4-5K\n工作经历\n文山盛源商贸店\n店员/营业员\n实习\n2025.06 - 2025.10\n1. 负责到店顾客接待、产品讲解与介绍\n2. 完成日常货品陈列、整理、盘点工作\n3. 协助处理顾客售后问题\n4. 配合团队开展日常工作\n昆明健之佳公司\n运营助理/专员\n2024.04 - 2024.11\n负责撰写软文，协助运营执行推广活动\n业绩：所负责的微博热点活动参与数量单条超过1,000人\n教育经历\n云南经济管理学院\n电子商务\n大专\n2021 - 2024\n专业排名：专业前40%"
     }
-    
+
     sample = st.selectbox("📌 快速体验：选择示例简历", ["— 不使用示例 —"] + list(samples.keys()))
     if sample != "— 不使用示例 —":
         text = samples[sample]
         st.info("示例简历已加载，点击「开始智能评分」查看效果")
-    
+
     if st.button("🚀 开始智能评分", type="primary", use_container_width=True):
         if not text.strip():
             st.warning("⚠️ 请先粘贴简历内容")
         else:
             engine = ResumeScoringEngine()
             r = engine.score(text, name or "未知")
-            
+
             with c2:
                 st.subheader("📊 评分结果")
-                
-                # 评分卡片
+
                 sc = r['score']
                 gr = r['grade']
                 if sc >= 80: color, emoji = "#10b981", "🌟"
                 elif sc >= 70: color, emoji = "#3b82f6", "✅"
                 elif sc >= 60: color, emoji = "#f59e0b", "⚠️"
                 else: color, emoji = "#ef4444", "❌"
-                
+
                 st.markdown(f"""
                 <div style="background: {color}; padding: 25px; border-radius: 15px; text-align: center; color: white; margin-bottom: 20px;">
                     <div style="font-size: 20px; opacity: 0.9;">{emoji} 综合评分</div>
@@ -237,19 +239,17 @@ with c1:
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # 基本信息
+
                 info = r['info']
                 ic = st.columns(4)
                 ic[0].metric("年龄", f"{info['age']}岁" if info['age'] else "未识别")
                 ic[1].metric("学历", info['edu'])
                 ic[2].metric("工作经历", f"{info['wc']}段")
                 ic[3].metric("总时长", f"{info['tm']}个月")
-                
-                # 维度评分
+
                 st.markdown("---")
                 st.subheader("📋 各维度评分")
-                
+
                 for dn, dim in r['dims'].items():
                     p = dim['s']/100
                     bc = "#10b981" if dim['s']>=80 else "#3b82f6" if dim['s']>=60 else "#ef4444"
@@ -265,54 +265,51 @@ with c1:
                         <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">{' • '.join(dim['r'][:2])}</div>
                     </div>
                     """, unsafe_allow_html=True)
-                
-                # 风险点
+
                 st.markdown("---")
                 st.subheader("⚠️ 风险点")
                 if r['risks']:
                     for risk in r['risks']:
-['lv']=='high' 否则“#fef3c7”，如果risk['lv']=='medium' 则“#d1fae5”
-                        bd = "#dc2626" 如果风险[]=='高' 则 "#f59e0b" 如果风险['lv']==否则 则 "#10b981"
+                        bg = "#fee2e2" if risk['lv']=='high' else "#fef3c7" if risk['lv']=='medium' else "#d1fae5"
+                        bd = "#dc2626" if risk['lv']=='high' else "#f59e0b" if risk['lv']=='medium' else "#10b981"
                         st.markdown(f"""
-                        <div style="background: {bg}; border-left: 4px solid {bd}; padding: 12px; border-radius: 8px; margin: 8px 0;
-
+                        <div style="background: {bg}; border-left: 4px solid {bd}; padding: 12px; border-radius: 8px; margin: 8px 0;">
+                            <strong>{risk['cn']}</strong><br>{risk['desc']}
                         </div>
                         """, unsafe_allow_html=True)
-否则:
-st.成功(“未发现明显风险点”)
-                
-                # 面试问题
+                else:
+                    st.success("🟢 未发现明显风险点")
+
                 st.markdown("---")
-                st.子标题("💬 推荐面试问题")
-                t1, t2 = st.选项卡(["必问题 (5道)", "加分题 (2道)"])
-                与 t1:
+                st.subheader("💬 推荐面试问题")
+                t1, t2 = st.tabs(["必问题 (5道)", "加分题 (2道)"])
+                with t1:
                     for i, q in enumerate(r['mq'], 1):
                         st.markdown(f'<div style="background: #eff6ff; padding: 12px; border-radius: 8px; margin: 6px 0;"><strong>{i}.</strong> {q}</div>', unsafe_allow_html=True)
                 with t2:
                     for i, q in enumerate(r['bq'], 6):
                         st.markdown(f'<div style="background: #eff6ff; padding: 12px; border-radius: 8px; margin: 6px 0;"><strong>{i}.</strong> {q}</div>', unsafe_allow_html=True)
-                
-                # 录用建议
+
                 st.markdown("---")
-                st.子标题("✅ 最终建议")
+                st.subheader("✅ 最终建议")
                 rec = r['rec']
-                
+
                 if rec['hd'] == "建议淘汰":
                     st.error(f"### {rec['hd']}")
                     st.write(f"**核心原因：** {rec['rr']}")
                     st.write(f"**其他岗位：** {rec['alt']}")
-否则:
+                else:
                     if "优先" in rec['hd']: st.balloons(); st.success(f"### 🎉 {rec['hd']}")
-如果“建议录用”在 rec['hd'] 中：st.success(f"### {rec['hd']}"
-否则: st.warning(f"### {rec['hd']}")
-                    
-rc = st.列(2)
+                    elif "建议录用" in rec['hd']: st.success(f"### {rec['hd']}")
+                    else: st.warning(f"### {rec['hd']}")
+
+                    rc = st.columns(2)
                     rc[0].metric("💰 薪资定位", rec['sal'])
                     rc[1].metric("🎯 岗位定位", rec['pos'])
-                    
+
                     st.write("**👀 关注重点：**")
-对于 p 在 rec['fp'] 中：
+                    for p in rec['fp']:
                         st.write(f"• {p}")
 
 st.markdown("---")
-st.标题(“脑子进水文创潮品 · 智能招聘系统 v1.0 | 粘贴简历 → 自动评分 → 秒出报告”)
+st.caption("🧠 脑子进水文创潮品 · 智能招聘系统 v1.0 | 粘贴简历 → 自动评分 → 秒出报告")
